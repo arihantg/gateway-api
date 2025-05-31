@@ -1,0 +1,155 @@
+GEP-XXXX: Client IP-Based Session Persistence
+Table of Contents
+Summary
+
+Motivation
+
+Goals
+
+Non-Goals
+
+Proposal
+
+API Changes
+
+Implementation Details/Considerations
+
+Alternatives
+
+Reference Implementation
+
+Open Questions
+
+Graduation Criteria
+
+Alpha
+
+Beta
+
+GA
+
+Implementation History
+
+Acknowledgements
+
+Summary
+This GEP proposes the addition of Client IP-based session persistence to the Gateway API. This feature will allow Gateway API implementations to ensure that requests originating from a specific client IP address (or a subnet defined by an IP mask) are consistently routed to the same backend endpoint for a configurable duration. This aims to provide a standardized and centralized mechanism for client IP persistence across various Gateway API implementations.
+
+Motivation
+Many applications, particularly those with stateful components or requiring sticky sessions, benefit from client IP-based session persistence. While some load balancers and ingress controllers offer this functionality, there is no standardized way to configure it directly within the Gateway API. This leads to vendor-specific annotations or configurations, hindering portability and consistency.
+
+Goals
+Define an API extension within Gateway API to enable client IP-based session persistence.
+
+Allow configuration of a session duration for which a client IP should stick to a backend.
+
+Provide an optional mechanism to specify an IP mask for subnet-based persistence, allowing multiple clients from the same subnet to be routed to the same backend.
+
+Ensure the solution is generic enough to be implemented by various Gateway API controllers.
+
+Improve portability of applications requiring client IP persistence across different Gateway API implementations.
+
+Non-Goals
+This GEP does not aim to replace or deprecate existing session persistence mechanisms (e.g., cookie-based persistence).
+
+This GEP does not dictate the specific algorithm or implementation details for how an individual Gateway controller maintains the client IP-to-backend mapping (e.g., in-memory, distributed cache).
+
+This GEP does not cover other forms of session persistence beyond client IP (e.g., header-based).
+
+Proposal
+The proposal is to extend the SessionPersistence API with a new type for client IP-based persistence.
+
+API Changes
+Introduce a new SessionPersistenceType called ClientIPBasedSessionPersistence.
+Within the SessionPersistence struct, add a new field, clientIP, which would be a pointer to a new struct ClientIPSessionPersistenceConfig.
+
+Example (illustrative, exact field names and structure are subject to review):
+
+# Existing SessionPersistence (simplified for example)
+# apiVersion: gateway.networking.k8s.io/v1beta1
+# kind: HTTPRoute
+# ...
+spec:
+  rules:
+  - backendRefs:
+    - name: my-service
+      port: 80
+    sessionPersistence:
+      # New field for client IP based persistence
+      clientIP:
+        duration: "5m" # Duration for which the session should persist (e.g., "5m", "1h")
+        ipMask: "24"   # Optional: IP mask for subnet persistence (e.g., "24" for /24 subnet)
+
+The new ClientIPSessionPersistenceConfig struct would include:
+
+duration: A string representing the duration for which the session should persist (e.g., "5m", "1h", "30s"). This should be a valid duration string.
+
+ipMask: An optional string representing the IP mask (e.g., "24" for IPv4 /24, "64" for IPv6 /64). If omitted, persistence would be based on the full client IP address.
+
+Implementation Details/Considerations
+IP Address Handling: Implementations must correctly parse and handle both IPv4 and IPv6 addresses.
+
+IP Masking: The ipMask field will require implementations to apply the specified subnet mask to the client IP address before using it for persistence.
+
+Session State Storage: Gateway implementations will need to manage the mapping between client IPs (or masked IPs) and backend endpoints. This could be in-memory, using a distributed cache, or other mechanisms.
+
+Garbage Collection: Implementations must ensure that expired session persistence entries are properly garbage collected.
+
+Concurrency: Handling concurrent requests from the same client IP or subnet to ensure consistent routing.
+
+Backend Health: How does client IP persistence interact with backend health checks? If a backend becomes unhealthy, should the sticky session be broken? This should be clearly defined.
+
+Alternatives
+Annotation-based configuration: Relying solely on annotations for client IP persistence would continue the current fragmentation and reduce portability. This GEP aims to provide a first-class API for this feature.
+
+External Load Balancer Configuration: While external load balancers can provide this, integrating it directly into Gateway API allows for more granular control at the route level and simplifies configuration for users.
+
+No change: Continue to rely on implementation-specific mechanisms, leading to inconsistent user experience and reduced portability.
+
+Reference Implementation
+(This section will be filled in once an implementation is started. It will typically link to a PR with the initial code changes.)
+
+Open Questions
+What are the exact validation rules for duration and ipMask?
+
+How should implementations handle the scenario where a sticky backend becomes unhealthy? Should the session be broken and re-established with a healthy backend, or should the unhealthy backend continue to be used until the session expires?
+
+Are there any security implications of exposing client IP persistence in the API? (e.g., potential for IP spoofing, though this is generally handled at lower layers).
+
+Should there be a default duration if not specified?
+
+Graduation Criteria
+Alpha
+API fields are defined and merged.
+
+Initial implementation in at least one Gateway API controller.
+
+Basic unit and e2e tests covering core functionality (client IP persistence without masking).
+
+Documentation outlining the feature and its usage.
+
+Beta
+Feedback from multiple implementers and users.
+
+Robust conformance tests covering various scenarios, including ipMask functionality.
+
+Addressing open questions and refining API based on feedback.
+
+Implementation in at least two Gateway API controllers.
+
+Clear guidance on how implementations should handle backend health with persistence.
+
+GA
+Widespread adoption and positive feedback from the community.
+
+Feature is stable and no major issues are reported.
+
+Comprehensive documentation and examples.
+
+Demonstrated interoperability across multiple implementations.
+
+Implementation History
+[Date]: Initial GEP draft created.
+
+Acknowledgements
+Thanks to the contributors of issue #3798 and the Gateway API community for their input and guidance.
